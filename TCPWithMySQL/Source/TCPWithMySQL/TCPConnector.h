@@ -4,12 +4,10 @@
 #pragma once
 
 #include "Windows/AllowWindowsPlatformTypes.h"
-#include "Windows/prewindowsapi.h"
 
 #include <WinSock2.h>
 #include <iostream>
 
-#include "Windows/PostWindowsApi.h"
 #include "Windows/HideWindowsPlatformTypes.h"
 
 #include "CoreMinimal.h"
@@ -85,6 +83,7 @@ public:
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 public:	
 	// Called every frame

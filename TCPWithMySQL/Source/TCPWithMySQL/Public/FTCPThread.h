@@ -20,14 +20,25 @@ public:
 
 	bool IsThreadRunning() const;
 
-	class FSocket* ServerSocket;
+	// 액터가 이미 Connect()해 둔 소켓을 그대로 넘겨받는다.
+	// (이 스레드가 별도로 127.0.0.1:17325에 다시 접속하지 않도록.)
+	void SetSocket(class FSocket* InSocket) { ServerSocket = InSocket; }
 
-	FString RecvText = "";
+	void StartThread();
+	void StopThread();
+
+	// 게임 스레드에서 안전하게 최신 수신 텍스트를 꺼내가기 위한 함수.
+	// (RecvText를 양쪽 스레드가 락 없이 직접 주고받지 않도록.)
+	FString GetAndClearRecvText();
+
+	class FSocket* ServerSocket;
 
 protected:
 
-	TSharedPtr<FInternetAddr> ServerAddress;
 	FRunnableThread* Thread;
 	bool bisRunThread;
 	bool bisThreadRunning;
+
+	FCriticalSection RecvTextLock;
+	FString RecvText = "";
 };

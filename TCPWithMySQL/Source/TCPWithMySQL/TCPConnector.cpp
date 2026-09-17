@@ -4,14 +4,11 @@
 #include "TCPConnector.h"
 
 #include "Windows/AllowWindowsPlatformTypes.h"
-#include "Windows/prewindowsapi.h"
 
 #include <WinSock2.h>
 #include <iostream>
 
-#include "Windows/PostWindowsApi.h"
 #include "Windows/HideWindowsPlatformTypes.h"
-
 
 #include "Sockets.h"
 #include "Common/TcpSocketBuilder.h"
@@ -51,9 +48,25 @@ void ATCPConnector::BeginPlay()
 	}
 	else
 	{
-
+		UE_LOG(LogTemp, Warning, TEXT("Failed to connect to server."));
 	}
 	
+}
+
+void ATCPConnector::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	StopThread();
+	delete TCPThreadInstance;
+	TCPThreadInstance = nullptr;
+
+	if (ClientSocket)
+	{
+		ClientSocket->Close();
+		ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(ClientSocket);
+		ClientSocket = nullptr;
+	}
+
+	Super::EndPlay(EndPlayReason);
 }
 
 // Called every frame
@@ -82,39 +95,26 @@ bool ATCPConnector::ConnectServer()
 
 void ATCPConnector::SendText()
 {
-	//TChar* ClientText = new char[512];
-	//Text = "Umjunsik is Alive";
-	//ClientText = TCHAR_TO_UTF8(*Text);
-	if(Text != "")
+	if (Text != "")
 	{
 		FString Serial = "C|" + Text + "|#";
-
 		TCHAR* SerializedText = Serial.GetCharArray().GetData();
-
-		//uint8 Buffer[512];
-		//memset(Buffer, '\0', std::size(Buffer));
-
-		//for (int i = 0; i < strlen(ClientText); ++i)
-		//{
-		//	Buffer[i] = ClientText[i];
-		//}
-
 		int32 Size = FCString::Strlen(SerializedText);
-
 		int32 BytesSent = 0;
-
 		ClientSocket->Send((uint8*)TCHAR_TO_UTF8(SerializedText), Size, BytesSent);
 
 		TArray<uint8> ReceivedData;
 		uint32 RecvSize = 0;
 
-		if(ClientSocket->HasPendingData(RecvSize))
+		if (ClientSocket->HasPendingData(RecvSize))
 		{
-			ReceivedData.Init(0, RecvSize);
+			// 널 종료를 보장하려고 +1 만큼 잡고 마지막을 0으로 채운다.
+			ReceivedData.Init(0, RecvSize + 1);
 			int32 Read = 0;
-			ClientSocket->Recv(ReceivedData.GetData(), ReceivedData.Num(), Read);
+			ClientSocket->Recv(ReceivedData.GetData(), RecvSize, Read);
 
-			FString RecvMessage = FString(UTF8_TO_TCHAR(ReceivedData.GetData()));
+			// 계산만 해두고 버리던 값을 실제로 저장한다.
+			RecvText = FString(UTF8_TO_TCHAR(ReceivedData.GetData()));
 		}
 	}
 }
@@ -125,14 +125,14 @@ void ATCPConnector::SendDataText()
 
 	if (DataText != "")
 	{
-		FString Serial = "Q" + DataText;
-
+		// 서버 InterpretMessage()는 "cmd|메시지|#" 형식을 기대한다.
+		// 기존처럼 '#' 없이 보내면 서버 파싱 루프가 종료 문자를 못 찾고
+		// 수신 버퍼 밖까지 읽어버리는 버그를 유발한다 (서버 쪽에서도 방어 처리했지만
+		// 클라이언트도 애초에 프로토콜을 지켜서 보내야 한다).
+		FString Serial = "Q|" + DataText + "|#";
 		TCHAR* SerializedText = Serial.GetCharArray().GetData();
-
 		int32 Size = FCString::Strlen(SerializedText);
-
 		int32 BytesSent = 0;
-
 		ClientSocket->Send((uint8*)TCHAR_TO_UTF8(SerializedText), Size, BytesSent);
 	}
 }
@@ -194,18 +194,35 @@ TSharedPtr<FBufferArchive> ATCPConnector::CreatePacket(int32 Type, const FString
 
 void ATCPConnector::StartThread()
 {
+	if (!ClientSocket || !TCPThreadInstance) return;
+
+	// 새로 접속하지 않고, 이 액터가 이미 연결해 둔 소켓을 그대로 넘겨서 쓴다.
+	TCPThreadInstance->SetSocket(ClientSocket);
+	TCPThreadInstance->StartThread();
 }
 
 void ATCPConnector::SendToThread()
 {
+	SendDataText();
 }
 
 void ATCPConnector::ReceiveToThread()
 {
+	if (!TCPThreadInstance) return;
+
+	FString Received = TCPThreadInstance->GetAndClearRecvText();
+	if (!Received.IsEmpty())
+	{
+		RecvText = Received;
+	}
 }
 
 void ATCPConnector::StopThread()
 {
+	if (TCPThreadInstance)
+	{
+		TCPThreadInstance->StopThread();
+	}
 }
 
 void ATCPConnector::Send()

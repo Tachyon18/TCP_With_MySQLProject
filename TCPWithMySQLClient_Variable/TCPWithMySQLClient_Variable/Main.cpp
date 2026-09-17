@@ -58,8 +58,19 @@ int main()
 			err_display("send()");
 			break;
 		}
-
 		printf("[TCP 클라이언트] %d바이트를 보냈습니다. \n", Retval);
+
+		Retval = recv(ServerSocket, Buf, Len, MSG_WAITALL);
+		if (Retval == SOCKET_ERROR)
+		{
+			err_display("recv()");
+			break;
+		}
+		else if (Retval == 0) break;
+
+		Buf[Retval] = '\0';
+		printf("[TCP 클라이언트] %d바이트를 받았습니다.\n", Retval);
+		printf("[받은 데이터] %s\n", Buf);
 	}
 
 	//while (1)

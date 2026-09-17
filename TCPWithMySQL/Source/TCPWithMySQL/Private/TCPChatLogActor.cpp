@@ -15,6 +15,8 @@ ATCPChatLogActor::ATCPChatLogActor()
 void ATCPChatLogActor::BeginPlay()
 {
 	Super::BeginPlay();
+
+	UE_LOG(LogTemp, Log, TEXT("ATCPChatLogActor BeginPlay() called."));
 	
 }
 
